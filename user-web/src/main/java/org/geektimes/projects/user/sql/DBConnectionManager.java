@@ -2,7 +2,9 @@ package org.geektimes.projects.user.sql;
 
 import org.geektimes.projects.user.domain.User;
 
+import javax.annotation.Resource;
 import javax.naming.Context;
+import javax.persistence.EntityManager;
 import javax.sql.DataSource;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
@@ -14,8 +16,35 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class DBConnectionManager {
+    private final Logger logger = Logger.getLogger(DBConnectionManager.class.getName());
+
+    @Resource(name = "jdbc/UserPlatformDB")
+    private DataSource dataSource;
+
+    @Resource(name = "bean/EntityManager")
+    private EntityManager entityManager;
+    public EntityManager getEntityManager() {
+        logger.info("当前 EntityManager 实现类：" + entityManager.getClass().getName());
+        return entityManager;
+    }
+
+    public Connection getConnection() {
+        // 依赖查找
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, e.getMessage());
+        }
+        if (connection != null) {
+            logger.log(Level.INFO, "获取 JNDI 数据库连接成功！");
+        }
+        return connection;
+    }
 
     private static final String databaseURL = "jdbc:derby:/C/jetbrains/env/db/demo_db;create=true";
     private static final String driverClass = "org.apache.derby.jdbc.EmbeddedDriver";
@@ -28,24 +57,60 @@ public class DBConnectionManager {
             "phoneNumber VARCHAR(64) NOT NULL" +
             ")";
 
-    static {
-        try {
-            Class.forName(driverClass);
-            Driver dr = DriverManager.getDriver(databaseURL);
-            Connection connection = dr.connect(databaseURL, new Properties());
-            Statement statement = connection.createStatement();
-            try {
-                System.out.println(statement.execute(CREATE_USERS_TABLE_DDL_SQL)); // false
-            }catch (SQLException e) {
+    private static final AtomicInteger connectionCount = new AtomicInteger(0);
 
-            }
-            statement.close();
-            connection.close();
-            driver = dr;
-        } catch (ClassNotFoundException | SQLException e) {
-            e.printStackTrace();
-        }
-    }
+//    public static synchronized Connection getConnection() {
+//        Connection conn = null;
+//        while (connectionCount.get() > 20) {
+//            try {
+//                Thread.sleep(20L);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//        try{
+//            conn = driver.connect(databaseURL, new Properties());
+//        } catch (SQLException throwables) {
+//            throwables.printStackTrace();
+//        }
+//        if (conn != null) {
+//            connectionCount.addAndGet(1);
+//            return conn;
+//        }
+//        throw new RuntimeException("数据库连接获取异常");
+//    }
+
+//    public void releaseConnection(Connection conn) {
+//        if (conn != null) {
+//            try {
+//                conn.close();
+//            } catch (SQLException e) {
+//                throw new RuntimeException(e.getCause());
+//            }finally {
+//                connectionCount.addAndGet(-1);
+//            }
+//        }
+//    }
+
+//
+//    static {
+//        try {
+//            Class.forName(driverClass);
+//            Driver dr = DriverManager.getDriver(databaseURL);
+//            Connection connection = dr.connect(databaseURL, new Properties());
+//            Statement statement = connection.createStatement();
+//            try {
+//                System.out.println(statement.execute(CREATE_USERS_TABLE_DDL_SQL)); // false
+//            }catch (SQLException e) {
+//
+//            }
+//            statement.close();
+//            connection.close();
+//            driver = dr;
+//        } catch (ClassNotFoundException | SQLException e) {
+//            e.printStackTrace();
+//        }
+//    }
 
     public static void main(String[] args) throws Exception {
 //        通过 ClassLoader 加载 java.sql.DriverManager -> static 模块 {}
@@ -141,41 +206,6 @@ public class DBConnectionManager {
     }
 
     private static Driver driver;
-
-    private static final AtomicInteger connectionCount = new AtomicInteger(0);
-
-    public static synchronized Connection getConnection() {
-        Connection conn = null;
-        while (connectionCount.get() > 20) {
-            try {
-                Thread.sleep(20L);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        try{
-            conn = driver.connect(databaseURL, new Properties());
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
-        if (conn != null) {
-            connectionCount.addAndGet(1);
-            return conn;
-        }
-        throw new RuntimeException("数据库连接获取异常");
-    }
-
-    public void releaseConnection(Connection conn) {
-        if (conn != null) {
-            try {
-                conn.close();
-            } catch (SQLException e) {
-                throw new RuntimeException(e.getCause());
-            }finally {
-                connectionCount.addAndGet(-1);
-            }
-        }
-    }
 
 
 

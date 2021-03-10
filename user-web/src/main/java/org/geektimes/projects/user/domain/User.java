@@ -1,22 +1,53 @@
 package org.geektimes.projects.user.domain;
 
+import org.geektimes.projects.user.validator.bean.validation.SearchUserById;
+import org.geektimes.projects.user.validator.bean.validation.UserLogin;
+import org.geektimes.projects.user.validator.bean.validation.UserRegister;
+import org.geektimes.projects.user.web.controller.UserController;
+import org.hibernate.validator.constraints.Length;
+
+import javax.persistence.*;
+import javax.validation.constraints.Email;
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
+import java.io.Serializable;
 import java.util.Objects;
+
+import static javax.persistence.GenerationType.AUTO;
 
 /**
  * 用户领域对象
  *
  * @since 1.0
  */
-public class User {
+@Entity
+@Table(name = "users")
+public class User implements Serializable {
 
+    @Id
+    @GeneratedValue(strategy = AUTO)
+    @NotNull(groups = SearchUserById.class)
     private Long id;
 
+    @Column
+    @Length(min = 4, groups = {UserRegister.class, UserLogin.class}, message = "用户名应大于等于4位")
+    @NotNull(groups = {UserRegister.class, UserLogin.class}, message = "未输入用户名")
     private String name;
 
+    @Column
+    @Length(min = 6, max = 32, groups = UserRegister.class, message = "密码应在6到32位")
+    @NotNull(groups = {UserRegister.class, UserLogin.class}, message = "未输入密码")
     private String password;
 
+    @Column
+    @Email(groups = UserRegister.class, message = "邮箱格式异常")
+    @NotNull(groups = {UserRegister.class}, message = "未输入邮箱")
     private String email;
 
+    @Column
+    @Length(min = 11, max = 11, groups = UserRegister.class, message = "手机号码应为11位")
+    @NotNull(groups = {UserRegister.class}, message = "未输入手机号码")
     private String phoneNumber;
 
     public Long getId() {

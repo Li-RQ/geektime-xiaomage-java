@@ -173,7 +173,11 @@ public class DatabaseUserRepository implements UserRepository {
         } catch (Throwable e) {
             exceptionHandler.accept(e);
         }finally {
-            dbConnectionManager.releaseConnection(connection);
+            try {
+                connection.close();
+            } catch (SQLException throwables) {
+                throwables.printStackTrace();
+            }
         }
         return null;
     }
@@ -202,7 +206,11 @@ public class DatabaseUserRepository implements UserRepository {
         } catch (Throwable e) {
             exceptionHandler.accept(e);
         }finally {
-            dbConnectionManager.releaseConnection(connection);
+            try {
+                connection.close();
+            } catch (SQLException throwables) {
+                throwables.printStackTrace();
+            }
         }
         return 0;
     }

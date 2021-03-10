@@ -1,11 +1,14 @@
 package org.geektimes.web.mvc;
 
 import org.apache.commons.lang.StringUtils;
+import org.geektimes.base.context.ComponentContext;
 import org.geektimes.web.mvc.controller.Controller;
 import org.geektimes.web.mvc.controller.PageController;
 import org.geektimes.web.mvc.controller.RestController;
 import org.geektimes.web.mvc.header.CacheControlHeaderWriter;
 import org.geektimes.web.mvc.header.annotation.CacheControl;
+import org.geektimes.web.mvc.header.annotation.ResponseBody;
+import org.geektimes.web.mvc.listener.WebComponentContext;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletConfig;
@@ -20,6 +23,7 @@ import javax.ws.rs.GET;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.Path;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -32,7 +36,7 @@ public class FrontControllerServlet extends HttpServlet {
     /**
      * 请求路径和 Controller 的映射关系缓存
      */
-    private Map<String, Controller> controllersMapping = new HashMap<>();
+    private Map<String, Object> controllersMapping = new HashMap<>();
 
     /**
      * 请求路径和 {@link HandlerMethodInfo} 映射关系缓存
@@ -45,14 +49,42 @@ public class FrontControllerServlet extends HttpServlet {
      * @param servletConfig
      */
     public void init(ServletConfig servletConfig) {
-        initHandleMethods();
+        initHandleMethods(servletConfig);
     }
 
     /**
      * 读取所有的 RestController 的注解元信息 @Path
      * 利用 ServiceLoader 技术（Java SPI）
      */
-    private void initHandleMethods() {
+    private void initHandleMethods(ServletConfig servletConfig) {
+        loadControllerBySPI();
+        loadControllerByComponentContext();
+    }
+
+    private void loadControllerByComponentContext() {
+        ComponentContext componentContext = WebComponentContext.getInstance();
+        List<Object> list = componentContext.getComponentByAnnotation(org.geektimes.web.mvc.header.annotation.Controller.class);
+        for (Object o: list) {
+            Class<?> controllerClass = o.getClass();
+            Path pathFromClass = controllerClass.getAnnotation(Path.class);
+            String requestPath = pathFromClass.value();
+            Method[] publicMethods = controllerClass.getMethods();
+            // 处理方法支持的 HTTP 方法集合
+            Map <String, HandlerMethodInfo> map = new HashMap<>();
+            for (Method method : publicMethods) {
+                Set<String> supportedHttpMethods = findSupportedHttpMethods(method);
+                Path pathFromMethod = method.getAnnotation(Path.class);
+                if (pathFromMethod != null) {
+                    map.put(pathFromMethod.value(),
+                            new HandlerMethodInfo(pathFromMethod.value(), method, supportedHttpMethods));
+                }
+            }
+            handleMethodInfoMapping.put(requestPath, map);
+            controllersMapping.put(requestPath, o);
+        }
+    }
+
+    private void loadControllerBySPI() {
         for (Controller controller : ServiceLoader.load(Controller.class)) {
             Class<?> controllerClass = controller.getClass();
             Path pathFromClass = controllerClass.getAnnotation(Path.class);
@@ -71,6 +103,7 @@ public class FrontControllerServlet extends HttpServlet {
             handleMethodInfoMapping.put(requestPath, map);
             controllersMapping.put(requestPath, controller);
         }
+        
     }
 
     /**
@@ -118,7 +151,7 @@ public class FrontControllerServlet extends HttpServlet {
                 StringUtils.replace(prefixPath, "//", "/"));
         String controllerPath = requestMappingPath.substring(0, requestMappingPath.indexOf("/", 1));
         // 映射到 Controller
-        Controller controller = controllersMapping.get(controllerPath);
+        Object controller = controllersMapping.get(controllerPath);
 
         if (controller != null) {
 
@@ -137,12 +170,17 @@ public class FrontControllerServlet extends HttpServlet {
                         return;
                     }
 
-                    if (controller instanceof PageController) {
-                        PageController pageController = PageController.class.cast(controller);
+                    if (controller instanceof PageController || controller.getClass().isAnnotationPresent(org.geektimes.web.mvc.header.annotation.Controller.class)) {
                         Object result = handlerMethodInfo.getHandlerMethod().invoke(controller, request, response);
-                        String viewPath = pageController.execute(request, response);
+                        String viewPath = "";
                         if (result instanceof String) {
                             viewPath = (String) result;
+                        }
+                        if (handlerMethodInfo.getHandlerMethod().isAnnotationPresent(ResponseBody.class)) {
+                            PrintWriter writer = response.getWriter();
+                            writer.print(result);
+                            writer.close();
+                            return;
                         }
                         // 页面请求 forward
                         // request -> RequestDispatcher forward
@@ -157,7 +195,12 @@ public class FrontControllerServlet extends HttpServlet {
                         requestDispatcher.forward(request, response);
                         return;
                     } else if (controller instanceof RestController) {
-                        // TODO
+                        Object result = handlerMethodInfo.getHandlerMethod().invoke(controller, request, response);
+
+                        PrintWriter writer = response.getWriter();
+                        writer.print(result);
+                        writer.close();
+                        return;
                     }
 
                 }
