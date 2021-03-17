@@ -1,3 +1,3 @@
 # geektime-xiaomage-java
 
-注册页面链接在index.jsp
+注册页面、MBean 链接在index.jsp
